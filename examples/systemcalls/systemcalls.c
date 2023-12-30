@@ -1,5 +1,9 @@
 #include "systemcalls.h"
-
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
@@ -16,8 +20,17 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int ret = system(cmd);
 
-    return true;
+    if (ret == -1 || !WIFEXITED(ret))
+    {
+        return false ;
+    }
+    else
+    {
+        return true;
+    }
+    
 }
 
 /**
@@ -58,10 +71,37 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
     va_end(args);
+    pid_t pid = fork();
+    if (pid == -1)
+    {
+        // Child process
+        if (execv(command[0], command) == -1) {
+            // execv failed
+            perror("Execv failed");
+            exit(EXIT_FAILURE);
+        }
+    }
+    else
+    {
+        // Parent process
+        int status;
+        int wait = waitpid(pid, &status, 0);
 
-    return true;
+        if(wait  == -1){
+            perror("wait error: ");
+        }
+        else {
+            if (WEXITSTATUS(status) != EXIT_SUCCESS){
+                return false;
+            }
+            else if (WIFSIGNALED(status) != EXIT_SUCCESS){
+                    return false;
+            }
+        }
+    }
+    return true ;
+    
 }
 
 /**
@@ -94,6 +134,55 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 */
 
     va_end(args);
+    // Create a file descriptor for the output file
+    int fd = open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 
-    return true;
+    if (fd == -1) {
+        // Error opening the output file
+        perror("Error opening output file");
+        return false;
+    }
+    pid_t child_pid = fork();
+
+    if (child_pid == -1) {
+        // Fork failed
+        perror("Fork failed");
+        return false;
+    }
+     if (child_pid == 0) {
+        // Child process
+
+        // Redirect standard output to the output file
+        if (dup2(fd, STDOUT_FILENO) == -1) {
+            perror("Dup2 failed");
+            exit(EXIT_FAILURE);
+        }
+
+        // Close the file descriptor for the output file, as it's no longer needed
+        close(fd);
+
+        // Execute the command
+        if (execv(command[0], command) == -1) {
+            // execv failed
+            perror("Execv failed");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        // Parent process
+
+        // Close the file descriptor for the output file in the parent process
+        close(fd);
+
+        int status;
+        waitpid(child_pid, &status, 0);
+
+        if (WIFEXITED(status)) {
+            // Child process terminated
+            return WEXITSTATUS(status) == 0;
+        } else {
+            // Child process terminated with an error
+            return false;
+        }
+    }
+    return true ;
 }
