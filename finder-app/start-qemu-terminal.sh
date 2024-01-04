@@ -20,7 +20,7 @@ if [ ! -e ${KERNEL_IMAGE} ]; then
 fi
 if [ ! -e ${INITRD_IMAGE} ]; then
     echo "Missing initrd image at ${INITRD_IMAGE}"
-    exit 1
+    exit
 fi
 
 
